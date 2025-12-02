@@ -20,6 +20,98 @@ const handlePrint = () => {
     window.print();
 };
 
+const CohortDetailView = ({ cohort, course, teacher, students, attendanceLogs, onBack }) => {
+    const enrolled = students.filter(s => cohort.studentIds?.includes(s.id));
+    const [attendanceHistoryStudent, setAttendanceHistoryStudent] = useState(null);
+
+    const handleToggleDoc = async (studentId) => {
+        const currentDocs = cohort.documentationStatus || {};
+        const newStatus = !currentDocs[studentId];
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'cohorts', cohort.id), { [`documentationStatus.${studentId}`]: newStatus });
+    };
+
+    const handleExportList = () => {
+        const rows = [["Nombre", "Apellido", "DNI", "CUIL", "Email", "Documentacion", "Ausencias"]];
+        enrolled.forEach(s => {
+            const studentLogs = attendanceLogs.filter(l => l.cohortId === cohort.id);
+            const absences = studentLogs.filter(l => !l.presentIds?.includes(s.id)).length;
+            rows.push([s.firstName, s.lastName, s.dni, s.cuil || '-', s.email, cohort.documentationStatus?.[s.id] ? "SI" : "NO", absences]);
+        });
+        exportToCSV(`Lista_Cohorte_${course?.name || 'Curso'}.csv`, rows);
+    };
+
+    const getStudentStats = (studentId) => {
+        const studentLogs = attendanceLogs.filter(l => l.cohortId === cohort.id);
+        const totalClasses = studentLogs.length;
+        const absences = studentLogs.filter(l => !l.presentIds?.includes(studentId)).length;
+        const history = studentLogs.map(l => ({
+            date: l.date,
+            present: l.presentIds?.includes(studentId)
+        })).sort((a, b) => new Date(b.date) - new Date(a.date));
+        return { totalClasses, absences, history };
+    };
+
+    return (
+        <div className="w-full bg-white p-8 min-h-screen print:p-0">
+            <div className="flex justify-between items-center mb-8 no-print">
+                <button onClick={onBack} className="flex items-center text-slate-500 hover:text-slate-800 gap-2 font-medium"><span className="text-lg">←</span> Volver</button>
+                <div className="flex gap-3"><button onClick={handleExportList} className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100"><FileSpreadsheet size={18} /> Exportar</button><button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900"><Printer size={18} /> Imprimir</button></div>
+            </div>
+            <div className="mb-8 pb-6 border-b border-slate-100">
+                <h2 className="text-3xl font-bold text-slate-800 mb-2">{course?.name || 'Curso no encontrado'}</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600"><p><strong>Docente:</strong> {teacher ? `${teacher.firstName} ${teacher.lastName}` : 'Sin asignar'}</p><p><strong>Fechas:</strong> {cohort.startDate} - {cohort.endDate}</p><p><strong>Alumnos:</strong> {enrolled.length}</p></div>
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-4">Lista de Alumnos</h3>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm"><thead className="bg-slate-100 text-slate-600 uppercase text-xs font-bold"><tr><th className="p-3">Nombre</th><th className="p-3">Apellido</th><th className="p-3">DNI / CUIL</th><th className="p-3">Contacto</th><th className="p-3 text-center">Ausencias</th><th className="p-3 text-center">Documentación</th></tr></thead><tbody className="divide-y divide-slate-100">{enrolled.map(s => {
+                    const docOk = cohort.documentationStatus?.[s.id];
+                    const stats = getStudentStats(s.id);
+                    return (
+                        <tr key={s.id} className="hover:bg-slate-50">
+                            <td className="p-3 font-medium text-slate-800">{s.firstName}</td>
+                            <td className="p-3 font-medium text-slate-800">{s.lastName}</td>
+                            <td className="p-3 text-slate-500">{s.dni}<br /><span className="text-xs text-slate-400">{s.cuil}</span></td>
+                            <td className="p-3 text-slate-500">{s.email}<br /><span className="text-xs">{s.phone}</span></td>
+                            <td className="p-3 text-center">
+                                <button onClick={() => setAttendanceHistoryStudent({ ...s, stats })} className="px-3 py-1 rounded bg-red-50 text-red-600 font-bold hover:bg-red-100 transition">
+                                    {stats.absences}
+                                </button>
+                            </td>
+                            <td className="p-3 text-center no-print"><button onClick={() => handleToggleDoc(s.id)} className={`px-3 py-1 rounded-full text-xs font-bold flex items-center justify-center gap-1 w-24 mx-auto transition ${docOk ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>{docOk ? <><CheckCircle size={12} /> OK</> : "Pendiente"}</button></td><td className="p-3 text-center print-only hidden">{docOk ? "ENTREGADO" : "PENDIENTE"}</td>
+                        </tr>
+                    );
+                })}</tbody></table>
+            </div>
+
+            {attendanceHistoryStudent && (
+                <Modal title={`Asistencia: ${attendanceHistoryStudent.firstName} ${attendanceHistoryStudent.lastName}`} onClose={() => setAttendanceHistoryStudent(null)}>
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg">
+                            <span className="text-sm font-bold text-slate-600">Total Clases: {attendanceHistoryStudent.stats.totalClasses}</span>
+                            <span className="text-sm font-bold text-red-600">Ausencias: {attendanceHistoryStudent.stats.absences}</span>
+                        </div>
+                        <div className="max-h-60 overflow-y-auto border rounded-lg">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-100 text-slate-500 font-bold"><tr><th className="p-2">Fecha</th><th className="p-2 text-right">Estado</th></tr></thead>
+                                <tbody>
+                                    {attendanceHistoryStudent.stats.history.map((h, i) => (
+                                        <tr key={i} className="border-t">
+                                            <td className="p-2">{h.date}</td>
+                                            <td className={`p-2 text-right font-bold ${h.present ? 'text-green-600' : 'text-red-600'}`}>{h.present ? 'PRESENTE' : 'AUSENTE'}</td>
+                                        </tr>
+                                    ))}
+                                    {attendanceHistoryStudent.stats.history.length === 0 && <tr><td colSpan="2" className="p-4 text-center text-slate-400">No hay registros de asistencia.</td></tr>}
+                                </tbody>
+                            </table>
+                        </div>
+                        <button onClick={() => setAttendanceHistoryStudent(null)} className="w-full bg-slate-800 text-white py-2 rounded-lg font-bold">Cerrar</button>
+                    </div>
+                </Modal>
+            )}
+        </div>
+    );
+};
+
 const CohortsManager = ({ cohorts, courses, teachers, students, attendanceLogs }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(null);
@@ -42,97 +134,28 @@ const CohortsManager = ({ cohorts, courses, teachers, students, attendanceLogs }
     // Detail View Logic
     if (viewDetailId) {
         const cohort = cohorts.find(c => c.id === viewDetailId);
-        if (!cohort) return setViewDetailId(null);
+
+        if (!cohort) {
+            return (
+                <div className="w-full p-8 text-center">
+                    <p className="text-red-500 mb-4">Cohorte no encontrada.</p>
+                    <button onClick={() => setViewDetailId(null)} className="text-blue-600 hover:underline">Volver</button>
+                </div>
+            );
+        }
+
         const course = courses.find(c => c.id === cohort.courseId);
         const teacher = teachers.find(t => t.id === cohort.teacherId);
-        const enrolled = students.filter(s => cohort.studentIds?.includes(s.id));
-
-        const [attendanceHistoryStudent, setAttendanceHistoryStudent] = useState(null);
-
-        const handleToggleDoc = async (studentId) => {
-            const currentDocs = cohort.documentationStatus || {};
-            const newStatus = !currentDocs[studentId];
-            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'cohorts', cohort.id), { [`documentationStatus.${studentId}`]: newStatus });
-        };
-        const handleExportList = () => {
-            const rows = [["Nombre", "Apellido", "DNI", "CUIL", "Email", "Documentacion", "Ausencias"]];
-            enrolled.forEach(s => {
-                const studentLogs = attendanceLogs.filter(l => l.cohortId === cohort.id);
-                const absences = studentLogs.filter(l => !l.presentIds?.includes(s.id)).length;
-                rows.push([s.firstName, s.lastName, s.dni, s.cuil || '-', s.email, cohort.documentationStatus?.[s.id] ? "SI" : "NO", absences]);
-            });
-            exportToCSV(`Lista_Cohorte_${course?.name || 'Curso'}.csv`, rows);
-        };
-
-        const getStudentStats = (studentId) => {
-            const studentLogs = attendanceLogs.filter(l => l.cohortId === cohort.id);
-            const totalClasses = studentLogs.length;
-            const absences = studentLogs.filter(l => !l.presentIds?.includes(studentId)).length;
-            const history = studentLogs.map(l => ({
-                date: l.date,
-                present: l.presentIds?.includes(studentId)
-            })).sort((a, b) => new Date(b.date) - new Date(a.date));
-            return { totalClasses, absences, history };
-        };
 
         return (
-            <div className="w-full bg-white p-8 min-h-screen animate-in slide-in-from-right duration-200 print:p-0">
-                <div className="flex justify-between items-center mb-8 no-print">
-                    <button onClick={() => setViewDetailId(null)} className="flex items-center text-slate-500 hover:text-slate-800 gap-2 font-medium"><span className="text-lg">←</span> Volver</button>
-                    <div className="flex gap-3"><button onClick={handleExportList} className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100"><FileSpreadsheet size={18} /> Exportar</button><button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900"><Printer size={18} /> Imprimir</button></div>
-                </div>
-                <div className="mb-8 pb-6 border-b border-slate-100">
-                    <h2 className="text-3xl font-bold text-slate-800 mb-2">{course?.name}</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-600"><p><strong>Docente:</strong> {teacher ? `${teacher.firstName} ${teacher.lastName}` : 'Sin asignar'}</p><p><strong>Fechas:</strong> {cohort.startDate} - {cohort.endDate}</p><p><strong>Alumnos:</strong> {enrolled.length}</p></div>
-                </div>
-                <h3 className="text-xl font-bold text-slate-800 mb-4">Lista de Alumnos</h3>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm"><thead className="bg-slate-100 text-slate-600 uppercase text-xs font-bold"><tr><th className="p-3">Nombre</th><th className="p-3">Apellido</th><th className="p-3">DNI / CUIL</th><th className="p-3">Contacto</th><th className="p-3 text-center">Ausencias</th><th className="p-3 text-center">Documentación</th></tr></thead><tbody className="divide-y divide-slate-100">{enrolled.map(s => {
-                        const docOk = cohort.documentationStatus?.[s.id];
-                        const stats = getStudentStats(s.id);
-                        return (
-                            <tr key={s.id} className="hover:bg-slate-50">
-                                <td className="p-3 font-medium text-slate-800">{s.firstName}</td>
-                                <td className="p-3 font-medium text-slate-800">{s.lastName}</td>
-                                <td className="p-3 text-slate-500">{s.dni}<br /><span className="text-xs text-slate-400">{s.cuil}</span></td>
-                                <td className="p-3 text-slate-500">{s.email}<br /><span className="text-xs">{s.phone}</span></td>
-                                <td className="p-3 text-center">
-                                    <button onClick={() => setAttendanceHistoryStudent({ ...s, stats })} className="px-3 py-1 rounded bg-red-50 text-red-600 font-bold hover:bg-red-100 transition">
-                                        {stats.absences}
-                                    </button>
-                                </td>
-                                <td className="p-3 text-center no-print"><button onClick={() => handleToggleDoc(s.id)} className={`px-3 py-1 rounded-full text-xs font-bold flex items-center justify-center gap-1 w-24 mx-auto transition ${docOk ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>{docOk ? <><CheckCircle size={12} /> OK</> : "Pendiente"}</button></td><td className="p-3 text-center print-only hidden">{docOk ? "ENTREGADO" : "PENDIENTE"}</td>
-                            </tr>
-                        );
-                    })}</tbody></table>
-                </div>
-
-                {attendanceHistoryStudent && (
-                    <Modal title={`Asistencia: ${attendanceHistoryStudent.firstName} ${attendanceHistoryStudent.lastName}`} onClose={() => setAttendanceHistoryStudent(null)}>
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg">
-                                <span className="text-sm font-bold text-slate-600">Total Clases: {attendanceHistoryStudent.stats.totalClasses}</span>
-                                <span className="text-sm font-bold text-red-600">Ausencias: {attendanceHistoryStudent.stats.absences}</span>
-                            </div>
-                            <div className="max-h-60 overflow-y-auto border rounded-lg">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-slate-100 text-slate-500 font-bold"><tr><th className="p-2">Fecha</th><th className="p-2 text-right">Estado</th></tr></thead>
-                                    <tbody>
-                                        {attendanceHistoryStudent.stats.history.map((h, i) => (
-                                            <tr key={i} className="border-t">
-                                                <td className="p-2">{h.date}</td>
-                                                <td className={`p-2 text-right font-bold ${h.present ? 'text-green-600' : 'text-red-600'}`}>{h.present ? 'PRESENTE' : 'AUSENTE'}</td>
-                                            </tr>
-                                        ))}
-                                        {attendanceHistoryStudent.stats.history.length === 0 && <tr><td colSpan="2" className="p-4 text-center text-slate-400">No hay registros de asistencia.</td></tr>}
-                                    </tbody>
-                                </table>
-                            </div>
-                            <button onClick={() => setAttendanceHistoryStudent(null)} className="w-full bg-slate-800 text-white py-2 rounded-lg font-bold">Cerrar</button>
-                        </div>
-                    </Modal>
-                )}
-            </div>
+            <CohortDetailView
+                cohort={cohort}
+                course={course}
+                teacher={teacher}
+                students={students}
+                attendanceLogs={attendanceLogs}
+                onBack={() => setViewDetailId(null)}
+            />
         );
     }
 

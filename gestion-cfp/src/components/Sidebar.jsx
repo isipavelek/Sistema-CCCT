@@ -12,7 +12,7 @@ const Sidebar = ({ userData, activeTab, setActiveTab, handleLogout }) => {
     return (
         <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-xl flex-shrink-0 z-20 h-full no-print">
             <div className="p-6 border-b border-slate-700">
-                <div className="flex items-center gap-2 mb-1"><School className="text-orange-500" size={24} /><h1 className="font-bold text-lg tracking-tight">CFP Roberto Rocca</h1></div>
+                <div className="flex items-center gap-2 mb-1"><School className="text-orange-500" size={24} /><h1 className="font-bold text-lg tracking-tight">3CT Roberto Rocca</h1></div>
                 <p className="text-xs text-slate-400">Sistema de Gestión Académica</p>
             </div>
             <nav className="flex-1 overflow-y-auto py-4">

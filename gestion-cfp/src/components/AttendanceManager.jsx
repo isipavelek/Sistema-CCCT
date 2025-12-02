@@ -7,6 +7,7 @@ const AttendanceManager = ({ cohorts, students, attendanceLogs }) => {
     const [selectedCohortId, setSelectedCohortId] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [presentIds, setPresentIds] = useState([]);
+    const [absentIds, setAbsentIds] = useState([]);
     const [saved, setSaved] = useState(false);
 
     const existingLog = attendanceLogs.find(l => l.cohortId === selectedCohortId && l.date === date);
@@ -15,6 +16,7 @@ const AttendanceManager = ({ cohorts, students, attendanceLogs }) => {
     useEffect(() => {
         if (!selectedCohortId || !date) return;
         setPresentIds(existingLog ? (existingLog.presentIds || []) : []);
+        setAbsentIds(existingLog ? (existingLog.absentIds || []) : []);
         setSaved(false);
     }, [selectedCohortId, date, attendanceLogs]);
 
@@ -26,15 +28,31 @@ const AttendanceManager = ({ cohorts, students, attendanceLogs }) => {
         const logId = `${selectedCohortId}_${date}`;
         try {
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'attendance', logId), {
-                cohortId: selectedCohortId, date, presentIds, timestamp: new Date().toISOString()
+                cohortId: selectedCohortId, date, presentIds, absentIds, timestamp: new Date().toISOString()
             });
             setSaved(true);
             setTimeout(() => setSaved(false), 3000);
         } catch (err) { alert("Error al guardar"); }
     };
 
-    const togglePresent = (id) => {
-        setPresentIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    const cycleStatus = (id) => {
+        if (presentIds.includes(id)) {
+            // Present -> Absent
+            setPresentIds(prev => prev.filter(x => x !== id));
+            setAbsentIds(prev => [...prev, id]);
+        } else if (absentIds.includes(id)) {
+            // Absent -> Unregistered
+            setAbsentIds(prev => prev.filter(x => x !== id));
+        } else {
+            // Unregistered -> Present
+            setPresentIds(prev => [...prev, id]);
+        }
+        setSaved(false);
+    };
+
+    const markAllPresent = () => {
+        setPresentIds(enrolledStudents.map(s => s.id));
+        setAbsentIds([]);
         setSaved(false);
     };
 
@@ -58,40 +76,45 @@ const AttendanceManager = ({ cohorts, students, attendanceLogs }) => {
                     <div className="mb-4 flex justify-between items-end">
                         <div>
                             <h3 className="font-bold text-lg">Alumnos ({enrolledStudents.length})</h3>
-                            <span className="text-sm text-slate-500">Marque los presentes</span>
+                            <span className="text-sm text-slate-500">Click para cambiar estado: Presente → Ausente → Sin Registrar</span>
                         </div>
-                        <button onClick={() => setPresentIds(enrolledStudents.map(s => s.id))} className="text-sm text-blue-600 font-bold hover:underline">Marcar Todos Presentes</button>
+                        <button onClick={markAllPresent} className="text-sm text-blue-600 font-bold hover:underline">Marcar Todos Presentes</button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
                         {enrolledStudents.map(s => {
                             const isPresent = presentIds.includes(s.id);
-                            let statusLabel = 'AUSENTE';
-                            let statusColor = 'text-red-500';
-                            let cardColor = 'bg-white border-slate-200 hover:bg-slate-50';
+                            const isAbsent = absentIds.includes(s.id);
+
+                            let statusLabel = 'SIN REGISTRAR';
+                            let statusColor = 'text-slate-400';
+                            let cardColor = 'bg-slate-50 border-slate-200 hover:bg-slate-100';
+                            let iconColor = 'border-slate-300 bg-white text-transparent';
 
                             if (isPresent) {
                                 statusLabel = 'PRESENTE';
                                 statusColor = 'text-green-600';
                                 cardColor = 'bg-green-50 border-green-200 shadow-sm';
-                            } else if (isNewLog) {
-                                statusLabel = 'SIN REGISTRAR';
-                                statusColor = 'text-slate-400';
-                                cardColor = 'bg-slate-50 border-slate-200';
+                                iconColor = 'bg-green-500 border-green-500 text-white';
+                            } else if (isAbsent) {
+                                statusLabel = 'AUSENTE';
+                                statusColor = 'text-red-600';
+                                cardColor = 'bg-red-50 border-red-200 shadow-sm';
+                                iconColor = 'bg-red-500 border-red-500 text-white';
                             }
 
                             return (
-                                <label key={s.id} className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition ${cardColor}`}>
+                                <div key={s.id} onClick={() => cycleStatus(s.id)} className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition select-none ${cardColor}`}>
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-6 h-6 rounded border flex items-center justify-center transition ${isPresent ? 'bg-green-500 border-green-500 text-white' : 'border-slate-300 bg-white'}`}>
+                                        <div className={`w-6 h-6 rounded border flex items-center justify-center transition ${iconColor}`}>
                                             {isPresent && <CheckSquare size={16} />}
+                                            {isAbsent && <span className="text-xs font-bold">X</span>}
                                         </div>
                                         <div>
-                                            <div className={`font-bold ${isPresent ? 'text-green-900' : 'text-slate-700'}`}>{s.firstName} {s.lastName}</div>
+                                            <div className={`font-bold ${isPresent ? 'text-green-900' : isAbsent ? 'text-red-900' : 'text-slate-700'}`}>{s.firstName} {s.lastName}</div>
                                             <div className={`text-xs font-bold ${statusColor}`}>{statusLabel}</div>
                                         </div>
                                     </div>
-                                    <input type="checkbox" className="hidden" checked={isPresent} onChange={() => togglePresent(s.id)} />
-                                </label>
+                                </div>
                             );
                         })}
                     </div>
