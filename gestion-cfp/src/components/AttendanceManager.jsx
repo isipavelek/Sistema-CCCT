@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { setDoc, doc } from 'firebase/firestore';
-import { CheckSquare } from 'lucide-react';
+import { CheckSquare, AlertCircle } from 'lucide-react';
 import { db, appId } from '../services/firebase';
+import { eachDayOfInterval, format, parseISO } from 'date-fns';
 
-const AttendanceManager = ({ cohorts, students, attendanceLogs }) => {
+const AttendanceManager = ({ cohorts, students, attendanceLogs, holidays }) => {
     const [selectedCohortId, setSelectedCohortId] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [presentIds, setPresentIds] = useState([]);
@@ -20,6 +21,20 @@ const AttendanceManager = ({ cohorts, students, attendanceLogs }) => {
 
     const selectedCohort = cohorts.find(c => c.id === selectedCohortId);
     const enrolledStudents = selectedCohort ? students.filter(s => selectedCohort.studentIds?.includes(s.id)) : [];
+
+    // Check if the selected date is a holiday
+    const isHoliday = holidays?.some(h => {
+        try {
+            const start = h.startDate;
+            const end = h.endDate || h.startDate;
+            return date >= start && date <= end;
+        } catch (e) { return false; }
+    });
+    const holidayInfo = isHoliday ? holidays.find(h => {
+        const start = h.startDate;
+        const end = h.endDate || h.startDate;
+        return date >= start && date <= end;
+    }) : null;
 
     const handleSave = async () => {
         if (!selectedCohortId) return;
@@ -53,6 +68,17 @@ const AttendanceManager = ({ cohorts, students, attendanceLogs }) => {
                     <input type="date" className="w-full bg-white text-slate-900 p-3 border rounded-lg bg-slate-50" value={date} onChange={e => setDate(e.target.value)} />
                 </div>
             </div>
+
+            {isHoliday && (
+                <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-3 text-rose-700 animate-pulse">
+                    <AlertCircle size={24} />
+                    <div>
+                        <p className="font-bold text-sm uppercase">Día No Lectivo: {holidayInfo?.name}</p>
+                        <p className="text-xs">Esta fecha está marcada como {holidayInfo?.type === 'holiday' ? 'feriado' : holidayInfo?.type === 'recess' ? 'receso' : 'vacaciones'} en el sistema.</p>
+                    </div>
+                </div>
+            )}
+
             {selectedCohortId ? (
                 <>
                     <div className="mb-4 flex justify-between items-end">
@@ -95,7 +121,13 @@ const AttendanceManager = ({ cohorts, students, attendanceLogs }) => {
                             );
                         })}
                     </div>
-                    <button onClick={handleSave} className={`w-full py-3 rounded-lg font-bold text-lg transition ${saved ? 'bg-green-600 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>{saved ? '¡Guardado!' : 'Guardar Asistencia'}</button>
+                    <button 
+                        onClick={handleSave} 
+                        disabled={isHoliday && isNewLog}
+                        className={`w-full py-3 rounded-lg font-bold text-lg transition ${isHoliday && isNewLog ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : saved ? 'bg-green-600 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                    >
+                        {saved ? '¡Guardado!' : isHoliday && isNewLog ? 'No se puede registrar asistencia en feriados' : 'Guardar Asistencia'}
+                    </button>
                 </>
             ) : <div className="text-center py-10 text-slate-400 bg-slate-50 rounded-lg border border-dashed">Seleccione una cohorte.</div>}
         </div>

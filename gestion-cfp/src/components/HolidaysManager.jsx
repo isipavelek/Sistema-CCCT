@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { addDoc, deleteDoc, doc, collection } from 'firebase/firestore';
 import { 
     Calendar, Plus, Trash2, Info, AlertCircle, 
-    CalendarRange, ChevronRight, Moon, Sun, Umbrella
+    CalendarRange, ChevronRight, Moon, Sun, Umbrella, CloudDownload
 } from 'lucide-react';
 import { format, addDays, isAfter, isBefore, parseISO, eachDayOfInterval } from 'date-fns';
 import { db, appId } from '../services/firebase';
@@ -58,6 +58,49 @@ const HolidaysManager = ({ holidays }) => {
         }
     };
 
+    const handleImportAPI = async () => {
+        const year = new Date().getFullYear();
+        if (!window.confirm(`¿Importar todos los feriados nacionales de Argentina para el año ${year}?`)) return;
+        
+        setLoading(true);
+        try {
+            const resp = await fetch(`https://api.argentinadatos.com/v1/feriados/${year}`);
+            if (!resp.ok) throw new Error("API Error");
+            const data = await resp.json();
+            
+            // Get existing holiday dates to avoid duplicates
+            // We flat them out in case someone added a range that includes a holiday
+            const flatExisting = new Set();
+            holidays.forEach(h => {
+                const start = parseISO(h.startDate);
+                const end = parseISO(h.endDate || h.startDate);
+                eachDayOfInterval({ start, end }).forEach(d => flatExisting.add(format(d, 'yyyy-MM-dd')));
+            });
+            
+            let count = 0;
+            for (const f of data) {
+                if (!flatExisting.has(f.fecha)) {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'holidays'), {
+                        name: f.nombre,
+                        type: 'holiday',
+                        startDate: f.fecha,
+                        endDate: f.fecha,
+                        isRange: false,
+                        apiSource: 'argentinadatos',
+                        createdAt: new Date().toISOString()
+                    });
+                    count++;
+                }
+            }
+            alert(`¡Éxito! Se importaron ${count} feriados nuevos.`);
+        } catch (err) {
+            console.error(err);
+            alert("Ocurrió un error al conectar con la API de feriados (ArgentinaDatos).");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Sort holidays by date
     const sortedHolidays = [...holidays].sort((a, b) => a.startDate.localeCompare(b.startDate));
 
@@ -71,10 +114,21 @@ const HolidaysManager = ({ holidays }) => {
                         </div>
                         <h2 className="text-xl font-bold text-white">Configuración del Calendario Escolar</h2>
                     </div>
-                    <p className="text-slate-400 text-sm">
-                        Agregá feriados, recesos y vacaciones. Estos días serán saltados automáticamente 
-                        en el cálculo de duración de cursos y bloqueados en la asistencia.
-                    </p>
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <p className="text-slate-400 text-sm max-w-xl">
+                            Agregá feriados, recesos y vacaciones. Estos días serán saltados automáticamente 
+                            en el cálculo de duración de cursos y bloqueados en la asistencia.
+                        </p>
+                        <button 
+                            type="button"
+                            onClick={handleImportAPI}
+                            disabled={loading}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-xl text-xs font-bold transition whitespace-nowrap"
+                        >
+                            <CloudDownload size={16} />
+                            Importar Feriados {new Date().getFullYear()}
+                        </button>
+                    </div>
                 </div>
 
                 <form onSubmit={handleAdd} className="p-6 border-b border-slate-100 bg-slate-50/50">
