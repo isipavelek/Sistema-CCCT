@@ -11,7 +11,7 @@ const CoursesManager = ({ courses, cohorts }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showArchived, setShowArchived] = useState(false);
     const [isEditing, setIsEditing] = useState(null);
-    const [newCourse, setNewCourse] = useState({ name: '', type: 'CFP', content: '', frequency: '', materials: '' });
+    const [newCourse, setNewCourse] = useState({ name: '', type: 'CFP', totalHours: '', content: '', frequency: '', materials: '' });
     const [isGenerating, setIsGenerating] = useState(false);
 
     const handleSave = async (e) => {
@@ -21,7 +21,7 @@ const CoursesManager = ({ courses, cohorts }) => {
         try {
             if (isEditing) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'courses', isEditing), newCourse);
             else await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'courses'), { ...newCourse, archived: false });
-            setNewCourse({ name: '', type: 'CFP', content: '', frequency: '', materials: '' });
+            setNewCourse({ name: '', type: 'CFP', totalHours: '', content: '', frequency: '', materials: '' });
             setIsEditing(null);
             setIsModalOpen(false);
         } catch (err) { alert("Error guardando curso"); }
@@ -61,7 +61,13 @@ const CoursesManager = ({ courses, cohorts }) => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {filteredCourses.map(c => (
                     <div key={c.id} className={`bg-white p-6 rounded-xl shadow-sm border transition ${c.archived ? 'opacity-70' : ''}`}>
-                        <div className="flex justify-between mb-4"><h3 className="font-bold text-lg">{c.name}</h3><span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded font-bold">{c.type}</span></div>
+                        <div className="flex justify-between mb-4">
+                            <div>
+                                <h3 className="font-bold text-lg">{c.name}</h3>
+                                {c.totalHours && <p className="text-xs text-slate-500 mt-1">{c.totalHours} hs. reloj</p>}
+                            </div>
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded font-bold h-fit">{c.type}</span>
+                        </div>
                         <p className="text-sm text-slate-600 line-clamp-3 mb-4">{c.content}</p>
                         <div className="flex justify-end gap-2 border-t pt-4">
                             {c.archived ? (
@@ -80,7 +86,10 @@ const CoursesManager = ({ courses, cohorts }) => {
                 <Modal title={isEditing ? "Editar Curso" : "Nuevo Curso"} onClose={() => setIsModalOpen(false)}>
                     <form onSubmit={handleSave} className="space-y-4">
                         <Input label="Nombre" value={newCourse.name} onChange={v => setNewCourse({ ...newCourse, name: v })} required />
-                        <div><label className="block text-sm font-medium mb-1">Tipo</label><select className="w-full border border-slate-300 bg-white text-slate-900 rounded p-2" value={newCourse.type} onChange={e => setNewCourse({ ...newCourse, type: e.target.value })}>{COURSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><label className="block text-sm font-medium mb-1">Tipo</label><select className="w-full border border-slate-300 bg-white text-slate-900 rounded p-2" value={newCourse.type} onChange={e => setNewCourse({ ...newCourse, type: e.target.value })}>{COURSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                            <Input label="Total de Horas Reloj" type="number" value={newCourse.totalHours} onChange={v => setNewCourse({ ...newCourse, totalHours: v })} />
+                        </div>
                         <div className="flex justify-end"><button type="button" onClick={generateAIContent} disabled={isGenerating} className="text-xs text-purple-600 font-bold flex items-center gap-1">{isGenerating ? <Loader size={12} className="animate-spin" /> : <Sparkles size={12} />} Autocompletar</button></div>
                         <textarea className="w-full border border-slate-300 bg-white text-slate-900 rounded p-2 h-24 text-sm" value={newCourse.content} onChange={e => setNewCourse({ ...newCourse, content: e.target.value })} placeholder="Contenidos..."></textarea>
                         <button className="w-full bg-blue-600 text-white py-2 rounded font-bold">Guardar</button>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { School, Briefcase, BookOpen, Calendar, Users, UserCheck, Shield, CheckSquare, DollarSign, LogOut } from 'lucide-react';
+import { School, Briefcase, BookOpen, Calendar, Users, UserCheck, Shield, CheckSquare, DollarSign, BarChart2, LogOut } from 'lucide-react';
 import { ROLES } from '../constants';
 
 const NavItem = ({ icon, label, active, onClick }) => (
@@ -44,6 +44,8 @@ const Sidebar = ({ userData, activeTab, setActiveTab, handleLogout }) => {
                     <>
                         <div className="px-6 py-2 text-xs font-bold text-slate-500 uppercase tracking-wider mt-4">Administración</div>
                         <NavItem icon={<DollarSign size={20} />} label="Pagos y Cuotas" active={activeTab === 'payments'} onClick={() => setActiveTab('payments')} />
+                        <NavItem icon={<BarChart2 size={20} />} label="Budget" active={activeTab === 'budget'} onClick={() => setActiveTab('budget')} />
+                        <NavItem icon={<Calendar size={20} />} label="Calendario / Feriados" active={activeTab === 'holidays'} onClick={() => setActiveTab('holidays')} />
                     </>
                 )}
             </nav>

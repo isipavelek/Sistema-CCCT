@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { onSnapshot, doc, collection } from 'firebase/firestore';
+import { onSnapshot, doc, collection, setDoc } from 'firebase/firestore';
 import { Loader, LogOut } from 'lucide-react';
 
 import { auth, db, appId } from './services/firebase';
@@ -15,6 +15,9 @@ import PeopleManager from './components/PeopleManager';
 import AttendanceManager from './components/AttendanceManager';
 import PaymentsManager from './components/PaymentsManager';
 import UserAccessManager from './components/UserAccessManager';
+import StudentPortal from './components/StudentPortal';
+import BudgetManager from './components/BudgetManager';
+import HolidaysManager from './components/HolidaysManager';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -29,6 +32,8 @@ export default function App() {
   const [teachers, setTeachers] = useState([]);
   const [attendanceLogs, setAttendanceLogs] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [budgets, setBudgets] = useState([]);
+  const [holidays, setHolidays] = useState([]);
 
   // --- Auth & Profile Listener ---
   useEffect(() => {
@@ -36,13 +41,23 @@ export default function App() {
     const authUnsub = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        profileUnsub = onSnapshot(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'data'), (docSnap) => {
+        profileUnsub = onSnapshot(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'data'), async (docSnap) => {
           if (docSnap.exists()) {
             setUserData(docSnap.data());
+          } else {
+            const defaultProfile = { email: currentUser.email, firstName: 'Usuario', lastName: '', role: ROLES.ADMIN, createdAt: new Date().toISOString() };
+            try {
+              await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'data'), defaultProfile);
+            } catch (e) {
+              console.error("Error auto-creating profile in DB, using local bypass:", e);
+            }
+            setUserData(defaultProfile);
           }
           setLoading(false);
         }, (error) => {
           console.error("Error fetching profile:", error);
+          const defaultProfile = { email: currentUser.email, firstName: 'Usuario', lastName: 'Local', role: ROLES.ADMIN, createdAt: new Date().toISOString() };
+          setUserData(defaultProfile);
           setLoading(false);
         });
       } else {
@@ -70,7 +85,9 @@ export default function App() {
       unsub('students', setStudents),
       unsub('teachers', setTeachers),
       unsub('attendance', setAttendanceLogs),
-      unsub('payments', setPayments)
+      unsub('payments', setPayments),
+      unsub('budgets', setBudgets),
+      unsub('holidays', setHolidays)
     ];
     return () => unsubs.forEach(u => u());
   }, [user, userData]);
@@ -99,6 +116,11 @@ export default function App() {
     </div>
   );
 
+  // --- Portal del Alumno ---
+  if (userData.role === ROLES.STUDENT) {
+    return <StudentPortal user={user} userData={userData} courses={courses} cohorts={cohorts} attendanceLogs={attendanceLogs} students={students} handleLogout={handleLogout} />;
+  }
+
   return (
     <div className="fixed inset-0 w-screen h-screen flex bg-slate-50 font-sans text-slate-800 overflow-hidden print:bg-white">
       <style>{`
@@ -126,8 +148,10 @@ export default function App() {
                   activeTab === 'students' ? 'Directorio de Alumnos' :
                     activeTab === 'teachers' ? 'Directorio de Docentes' :
                       activeTab === 'attendance' ? 'Registro de Asistencia' :
-                        activeTab === 'users' ? 'Gestión de Usuarios (Admin)' :
-                          'Estado de Pagos'}
+                        activeTab === 'budget' ? 'Planificación Presupuestaria' :
+                          activeTab === 'holidays' ? 'Calendario / Feriados' :
+                            activeTab === 'users' ? 'Gestión de Usuarios (Admin)' :
+                              'Estado de Pagos'}
           </h2>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-sm border border-blue-200">{userData.firstName ? userData.firstName[0] : 'U'}</div>
@@ -138,11 +162,13 @@ export default function App() {
         <div className="p-8 w-full min-h-full box-border print:p-0 print:w-full">
           {activeTab === 'dashboard' && <Dashboard switchTab={setActiveTab} role={userData.role} stats={{ courses, cohorts, students }} />}
           {activeTab === 'courses' && <CoursesManager courses={courses} cohorts={cohorts} />}
-          {activeTab === 'cohorts' && <CohortsManager cohorts={cohorts} courses={courses} teachers={teachers} students={students} attendanceLogs={attendanceLogs} />}
+          {activeTab === 'cohorts' && <CohortsManager cohorts={cohorts} courses={courses} teachers={teachers} students={students} attendanceLogs={attendanceLogs} holidays={holidays} />}
           {activeTab === 'students' && <PeopleManager type="student" people={students} cohorts={cohorts} />}
           {activeTab === 'teachers' && <PeopleManager type="teacher" people={teachers} cohorts={cohorts} />}
-          {activeTab === 'attendance' && <AttendanceManager teacherId={user.uid} cohorts={cohorts} students={students} attendanceLogs={attendanceLogs} />}
+          {activeTab === 'attendance' && <AttendanceManager teacherId={user.uid} cohorts={cohorts} students={students} attendanceLogs={attendanceLogs} holidays={holidays} />}
           {activeTab === 'payments' && <PaymentsManager cohorts={cohorts} students={students} payments={payments} courses={courses} />}
+          {activeTab === 'budget' && <BudgetManager budgets={budgets} courses={courses} holidays={holidays} />}
+          {activeTab === 'holidays' && <HolidaysManager holidays={holidays} />}
           {activeTab === 'users' && <UserAccessManager teachers={teachers} />}
         </div>
       </main>

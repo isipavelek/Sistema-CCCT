@@ -29,7 +29,10 @@ const PeopleManager = ({ type, people, cohorts }) => {
                 }
             }
             resetForm();
-        } catch (err) { console.error(err); }
+        } catch (err) { 
+            console.error(err); 
+            alert("No se pudo guardar: " + err.message);
+        }
     };
 
     const handleDelete = async (id, email) => {
@@ -57,23 +60,27 @@ const PeopleManager = ({ type, people, cohorts }) => {
                 <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 shadow-sm transition text-sm font-medium">+ Agregar {type === 'student' ? 'Alumno' : 'Docente'}</button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 w-full">
-                {people.map(p => (
-                    <div key={p.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex items-start justify-between gap-4 group hover:shadow-md transition">
-                        <div className="flex items-start gap-4 overflow-hidden">
-                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold flex-shrink-0">{p.firstName.charAt(0)}</div>
-                            <div className="overflow-hidden">
-                                <h4 className="font-bold text-slate-800 truncate">{p.lastName}, {p.firstName}</h4>
-                                <p className="text-xs text-slate-500 mt-1 font-mono">{p.dni}</p>
-                                <p className="text-xs text-slate-400 truncate">{p.email}</p>
-                                {p.cuil && <p className="text-xs text-slate-400 font-mono">CUIL: {p.cuil}</p>}
+                {people.map(p => {
+                    const displayInitial = p.firstName ? p.firstName.charAt(0) : (p.name ? p.name.charAt(0) : 'U');
+                    const displayName = p.lastName && p.firstName ? `${p.lastName}, ${p.firstName}` : (p.name || 'Sin Nombre');
+                    return (
+                        <div key={p.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex items-start justify-between gap-4 group hover:shadow-md transition">
+                            <div className="flex items-start gap-4 overflow-hidden">
+                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold flex-shrink-0">{displayInitial}</div>
+                                <div className="overflow-hidden">
+                                    <h4 className="font-bold text-slate-800 truncate">{displayName}</h4>
+                                    <p className="text-xs text-slate-500 mt-1 font-mono">{p.dni || 'Sin DNI'}</p>
+                                    <p className="text-xs text-slate-400 truncate">{p.email}</p>
+                                    {p.cuil && <p className="text-xs text-slate-400 font-mono">CUIL: {p.cuil}</p>}
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition">
+                                <button onClick={() => openEdit(p)} className="text-blue-500 hover:bg-blue-50 p-1 rounded"><Edit size={14} /></button>
+                                <button onClick={() => handleDelete(p.id, p.email)} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 size={14} /></button>
                             </div>
                         </div>
-                        <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition">
-                            <button onClick={() => openEdit(p)} className="text-blue-500 hover:bg-blue-50 p-1 rounded"><Edit size={14} /></button>
-                            <button onClick={() => handleDelete(p.id, p.email)} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 size={14} /></button>
-                        </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
             {isModalOpen && (
                 <Modal title={`${isEditing ? 'Editar' : 'Alta de'} ${title}`} onClose={resetForm}>

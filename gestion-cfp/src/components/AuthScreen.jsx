@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { collection, getDocs, query, where, setDoc, doc, addDoc } from 'firebase/firestore';
 import { School, Crown, AlertTriangle, Briefcase, Mail, Lock, Loader } from 'lucide-react';
 import { auth, db, appId } from '../services/firebase';
@@ -42,9 +42,17 @@ const AuthScreen = () => {
         setLoading(true);
         try {
             if (isLogin) {
-                const isBanned = await checkIsBanned(email);
-                if (isBanned) throw new Error("Tu cuenta ha sido desactivada. Contacta al administrador.");
                 await signInWithEmailAndPassword(auth, email, password);
+                try {
+                    const isBanned = await checkIsBanned(email);
+                    if (isBanned) {
+                        await signOut(auth);
+                        throw new Error("Tu cuenta ha sido desactivada. Contacta al administrador.");
+                    }
+                } catch (innerErr) {
+                    if (innerErr.message.includes("desactivada")) throw innerErr;
+                    console.warn("Could not verify ban status:", innerErr);
+                }
             } else {
                 let roleToAssign = null;
                 const usersSnapshot = await getDocs(collection(db, 'artifacts', appId, 'public', 'meta', 'users_list'));
