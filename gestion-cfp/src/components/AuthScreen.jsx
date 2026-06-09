@@ -77,7 +77,12 @@ const AuthScreen = () => {
                 const lastName = names.slice(1).join(' ') || '';
 
                 await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data'), {
-                    email, firstName, lastName, role: roleToAssign, createdAt: new Date().toISOString()
+                    email, 
+                    firstName, 
+                    lastName, 
+                    role: Array.isArray(roleToAssign) ? roleToAssign[0] : roleToAssign,
+                    roles: Array.isArray(roleToAssign) ? roleToAssign : [roleToAssign],
+                    createdAt: new Date().toISOString()
                 });
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'meta', 'users_list'), { uid: user.uid });
             }

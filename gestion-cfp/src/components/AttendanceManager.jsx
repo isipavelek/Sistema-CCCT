@@ -3,7 +3,11 @@ import { setDoc, doc } from 'firebase/firestore';
 import { CheckSquare, AlertCircle } from 'lucide-react';
 import { db, appId } from '../services/firebase';
 import { eachDayOfInterval, format, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
+import DatePicker, { registerLocale } from 'react-datepicker';
+import "react-datepicker/dist/react-datepicker.css";
 
+registerLocale('es', es);
 const AttendanceManager = ({ cohorts, students, attendanceLogs, holidays }) => {
     const [selectedCohortId, setSelectedCohortId] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -83,7 +87,12 @@ const AttendanceManager = ({ cohorts, students, attendanceLogs, holidays }) => {
                 </div>
                 <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Fecha de Clase</label>
-                    <input type="date" className="w-full bg-white text-slate-900 p-3 border rounded-lg bg-slate-50" value={date} onChange={e => setDate(e.target.value)} />
+                    <DatePicker 
+                        selected={date ? parseISO(date) : null} 
+                        onChange={d => setDate(d ? format(d, 'yyyy-MM-dd') : '')} 
+                        dateFormat="dd/MM/yyyy" isClearable placeholderText="dd/mm/aaaa"
+                        className="w-full bg-white text-slate-900 p-3 border rounded-lg bg-slate-50" 
+                    />
                 </div>
             </div>
 

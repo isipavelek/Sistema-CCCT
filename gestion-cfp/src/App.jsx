@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { onSnapshot, doc, collection, setDoc } from 'firebase/firestore';
-import { Loader, LogOut } from 'lucide-react';
+import { onSnapshot, doc, collection, setDoc, query, where, getDocs, updateDoc } from 'firebase/firestore';
+import { Loader, LogOut, Camera } from 'lucide-react';
 
 import { auth, db, appId } from './services/firebase';
 import { ROLES } from './constants';
@@ -18,12 +18,15 @@ import UserAccessManager from './components/UserAccessManager';
 import StudentPortal from './components/StudentPortal';
 import BudgetManager from './components/BudgetManager';
 import HolidaysManager from './components/HolidaysManager';
+import PreEnrollmentManager from './components/PreEnrollmentManager';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [uploadingProfile, setUploadingProfile] = useState(false);
 
   // Data State
   const [courses, setCourses] = useState([]);
@@ -34,6 +37,7 @@ export default function App() {
   const [payments, setPayments] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [holidays, setHolidays] = useState([]);
+  const [preEnrollments, setPreEnrollments] = useState([]);
 
   // --- Auth & Profile Listener ---
   useEffect(() => {
@@ -42,22 +46,58 @@ export default function App() {
       setUser(currentUser);
       if (currentUser) {
         profileUnsub = onSnapshot(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'data'), async (docSnap) => {
-          if (docSnap.exists()) {
-            setUserData(docSnap.data());
-          } else {
-            const defaultProfile = { email: currentUser.email, firstName: 'Usuario', lastName: '', role: ROLES.ADMIN, createdAt: new Date().toISOString() };
+          let currentProfile = docSnap.exists() ? docSnap.data() : null;
+          
+          if (!currentProfile) {
+            currentProfile = { email: currentUser.email, firstName: 'Usuario', lastName: '', roles: [ROLES.ADMIN], createdAt: new Date().toISOString() };
             try {
-              await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'data'), defaultProfile);
+              await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'data'), currentProfile);
             } catch (e) {
-              console.error("Error auto-creating profile in DB, using local bypass:", e);
+              console.error("Error auto-creating profile:", e);
             }
-            setUserData(defaultProfile);
           }
+
+          // --- ACL AUTO-SYNC ---
+          // Check if administrative changes were made in 'invites' and sync to profile
+          try {
+            const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'invites'), where('email', '==', currentUser.email));
+            const inviteSnap = await getDocs(q);
+            
+            let inviteRoles = [];
+            let inviteName = '';
+
+            if (!inviteSnap.empty) {
+                const inviteData = inviteSnap.docs[0].data();
+                inviteRoles = Array.isArray(inviteData.roles) ? inviteData.roles : (inviteData.role ? [inviteData.role] : []);
+                inviteName = inviteData.name || '';
+            }
+
+            // --- SECURITY BYPASS: EMERGENCY ADMIN ---
+            // Ensure the main admin never loses access.
+            if (currentUser.email === 'ipavelek@gmail.com' && !inviteRoles.includes(ROLES.ADMIN)) {
+                inviteRoles.push(ROLES.ADMIN);
+            }
+
+            const currentRoles = currentProfile.roles || (currentProfile.role ? [currentProfile.role] : []);
+            const rolesDiffer = JSON.stringify([...inviteRoles].sort()) !== JSON.stringify([...currentRoles].sort());
+            const nameDiffers = inviteName && (inviteName !== (currentProfile.firstName + ' ' + (currentProfile.lastName || '')).trim());
+            
+            if (rolesDiffer || nameDiffers) {
+                const update = { roles: inviteRoles, role: inviteRoles[0] || '' };
+                if (nameDiffers) {
+                    const parts = inviteName.split(' ');
+                    update.firstName = parts[0];
+                    update.lastName = parts.slice(1).join(' ');
+                }
+                await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'profile', 'data'), { ...currentProfile, ...update }, { merge: true });
+                // Snapshot will trigger again
+            }
+          } catch (syncErr) { console.warn("ACL Sync failed:", syncErr); }
+
+          setUserData(currentProfile);
           setLoading(false);
         }, (error) => {
           console.error("Error fetching profile:", error);
-          const defaultProfile = { email: currentUser.email, firstName: 'Usuario', lastName: 'Local', role: ROLES.ADMIN, createdAt: new Date().toISOString() };
-          setUserData(defaultProfile);
           setLoading(false);
         });
       } else {
@@ -87,13 +127,41 @@ export default function App() {
       unsub('attendance', setAttendanceLogs),
       unsub('payments', setPayments),
       unsub('budgets', setBudgets),
-      unsub('holidays', setHolidays)
+      unsub('holidays', setHolidays),
+      unsub('pre_enrollments', setPreEnrollments)
     ];
     return () => unsubs.forEach(u => u());
   }, [user, userData]);
 
   const handleLogout = async () => {
     try { await signOut(auth); setUserData(null); setActiveTab('dashboard'); } catch (e) { console.error(e); }
+  };
+
+  const handleProfilePhotoUpload = (e) => {
+      const file = e.target.files[0];
+      if (!file || !user) return;
+      if (file.size > 1024 * 1024) {
+          alert("La imagen es demasiado grande. Máximo 1MB.");
+          return;
+      }
+      setUploadingProfile(true);
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+          const base64 = ev.target.result;
+          try {
+              await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data'), { photoUrl: base64 }, { merge: true });
+              const myTeacherRecord = teachers.find(t => t.email === user.email);
+              if (myTeacherRecord) {
+                  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teachers', myTeacherRecord.id), { photoUrl: base64 });
+              }
+          } catch (err) {
+              console.error(err);
+              alert("Error al guardar imagen.");
+          }
+          setUploadingProfile(false);
+      };
+      reader.onerror = () => { alert("Error al leer la imagen."); setUploadingProfile(false); };
+      reader.readAsDataURL(file);
   };
 
   if (loading) return (
@@ -117,7 +185,11 @@ export default function App() {
   );
 
   // --- Portal del Alumno ---
-  if (userData.role === ROLES.STUDENT) {
+  const rolesArr = Array.isArray(userData.roles) ? userData.roles : (userData.role ? [userData.role] : []);
+  const isAdmin = rolesArr.includes(ROLES.ADMIN);
+  const isStudent = rolesArr.includes(ROLES.STUDENT);
+
+  if (isStudent && !isAdmin) {
     return <StudentPortal user={user} userData={userData} courses={courses} cohorts={cohorts} attendanceLogs={attendanceLogs} students={students} handleLogout={handleLogout} />;
   }
 
@@ -150,17 +222,39 @@ export default function App() {
                       activeTab === 'attendance' ? 'Registro de Asistencia' :
                         activeTab === 'budget' ? 'Planificación Presupuestaria' :
                           activeTab === 'holidays' ? 'Calendario / Feriados' :
-                            activeTab === 'users' ? 'Gestión de Usuarios (Admin)' :
-                              'Estado de Pagos'}
+                            activeTab === 'preenrollments' ? 'Gestión de Pre-inscripciones' :
+                              activeTab === 'users' ? 'Gestión de Usuarios (Admin)' :
+                                'Estado de Pagos'}
           </h2>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-sm border border-blue-200">{userData.firstName ? userData.firstName[0] : 'U'}</div>
-            <span className="text-sm font-medium text-slate-600">{userData.role}</span>
+          <div className="flex items-center gap-4">
+             <label className="relative w-10 h-10 rounded-full flex items-center justify-center font-bold overflow-hidden border border-slate-200 cursor-pointer group bg-blue-100 text-blue-600 flex-shrink-0">
+                 {uploadingProfile ? (
+                     <div className="text-xs">...</div>
+                 ) : userData.photoUrl ? (
+                     <>
+                         <img src={userData.photoUrl} alt="Perfil" className="w-full h-full object-cover" />
+                         <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white">
+                             <Camera size={14} />
+                         </div>
+                     </>
+                 ) : (
+                     <>
+                         <div>{userData.firstName ? userData.firstName[0] : 'U'}</div>
+                         <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white">
+                             <Camera size={14} />
+                         </div>
+                     </>
+                 )}
+                 <input type="file" className="hidden" accept="image/*" onChange={handleProfilePhotoUpload} disabled={uploadingProfile} />
+             </label>
+            <span className="text-sm font-medium text-slate-600">
+              {rolesArr.join(', ')}
+            </span>
           </div>
         </header>
 
         <div className="p-8 w-full min-h-full box-border print:p-0 print:w-full">
-          {activeTab === 'dashboard' && <Dashboard switchTab={setActiveTab} role={userData.role} stats={{ courses, cohorts, students }} />}
+          {activeTab === 'dashboard' && <Dashboard switchTab={setActiveTab} role={userData.role} stats={{ courses, cohorts, students }} budgets={budgets} courses={courses} />}
           {activeTab === 'courses' && <CoursesManager courses={courses} cohorts={cohorts} />}
           {activeTab === 'cohorts' && <CohortsManager cohorts={cohorts} courses={courses} teachers={teachers} students={students} attendanceLogs={attendanceLogs} holidays={holidays} />}
           {activeTab === 'students' && <PeopleManager type="student" people={students} cohorts={cohorts} />}
@@ -169,6 +263,11 @@ export default function App() {
           {activeTab === 'payments' && <PaymentsManager cohorts={cohorts} students={students} payments={payments} courses={courses} />}
           {activeTab === 'budget' && <BudgetManager budgets={budgets} courses={courses} holidays={holidays} />}
           {activeTab === 'holidays' && <HolidaysManager holidays={holidays} />}
+          {activeTab === 'preenrollments' && (
+            <ErrorBoundary>
+              <PreEnrollmentManager preEnrollments={preEnrollments} courses={courses} cohorts={cohorts} students={students} />
+            </ErrorBoundary>
+          )}
           {activeTab === 'users' && <UserAccessManager teachers={teachers} />}
         </div>
       </main>

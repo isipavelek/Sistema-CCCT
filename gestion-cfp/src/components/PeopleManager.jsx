@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { updateDoc, addDoc, deleteDoc, doc, collection } from 'firebase/firestore';
-import { Search, Edit, Trash2 } from 'lucide-react';
+import { Search, Edit, Trash2, Camera } from 'lucide-react';
 import { db, appId } from '../services/firebase';
 import { createTeacherDirectly, deleteTeacher } from '../services/userService';
 import Modal from './Modal';
@@ -9,12 +9,34 @@ import Input from './Input';
 const PeopleManager = ({ type, people, cohorts }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(null);
-    const [person, setPerson] = useState({ firstName: '', lastName: '', dni: '', email: '', phone: '', cuil: '', address: '', comments: '' });
+    const [uploading, setUploading] = useState(false);
+    const [person, setPerson] = useState({ firstName: '', lastName: '', dni: '', email: '', phone: '', cuil: '', address: '', comments: '', photoUrl: '' });
     const collectionName = type === 'student' ? 'students' : 'teachers';
     const title = type === 'student' ? 'Alumnos' : 'Docentes';
 
-    const resetForm = () => { setPerson({ firstName: '', lastName: '', dni: '', email: '', phone: '', cuil: '', address: '', comments: '' }); setIsEditing(null); setIsModalOpen(false); }
+    const resetForm = () => { setPerson({ firstName: '', lastName: '', dni: '', email: '', phone: '', cuil: '', address: '', comments: '', photoUrl: '' }); setIsEditing(null); setIsModalOpen(false); setUploading(false); }
     const openEdit = (p) => { setPerson({ ...p }); setIsEditing(p.id); setIsModalOpen(true); }
+
+    const handlePhotoUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        // Validate size (max 1MB)
+        if (file.size > 1024 * 1024) {
+            alert("La imagen es demasiado grande. Máximo 1MB.");
+            return;
+        }
+        setUploading(true);
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            setPerson(prev => ({ ...prev, photoUrl: ev.target.result }));
+            setUploading(false);
+        };
+        reader.onerror = () => {
+            alert("Error al leer la imagen.");
+            setUploading(false);
+        };
+        reader.readAsDataURL(file);
+    };
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -66,7 +88,9 @@ const PeopleManager = ({ type, people, cohorts }) => {
                     return (
                         <div key={p.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex items-start justify-between gap-4 group hover:shadow-md transition">
                             <div className="flex items-start gap-4 overflow-hidden">
-                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold flex-shrink-0">{displayInitial}</div>
+                                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold flex-shrink-0 overflow-hidden border border-slate-200">
+                                    {p.photoUrl ? <img src={p.photoUrl} alt="" className="w-full h-full object-cover" /> : displayInitial}
+                                </div>
                                 <div className="overflow-hidden">
                                     <h4 className="font-bold text-slate-800 truncate">{displayName}</h4>
                                     <p className="text-xs text-slate-500 mt-1 font-mono">{p.dni || 'Sin DNI'}</p>
@@ -86,6 +110,18 @@ const PeopleManager = ({ type, people, cohorts }) => {
                 <Modal title={`${isEditing ? 'Editar' : 'Alta de'} ${title}`} onClose={resetForm}>
                     <form onSubmit={handleSave} className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
+                            <div className="col-span-2 flex items-center gap-4 mb-2">
+                                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200 flex-shrink-0">
+                                    {person.photoUrl ? <img src={person.photoUrl} alt="Perfil" className="w-full h-full object-cover" /> : <Camera className="text-slate-400" size={24} />}
+                                </div>
+                                <div>
+                                    <label className="bg-white border border-slate-200 hover:bg-slate-50 text-sm font-bold px-3 py-2 rounded-lg cursor-pointer transition inline-block text-slate-700">
+                                        {uploading ? 'Subiendo...' : 'Subir Foto'}
+                                        <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} disabled={uploading} />
+                                    </label>
+                                    <p className="text-xs text-slate-400 mt-1">Opcional. Formatos: JPG, PNG.</p>
+                                </div>
+                            </div>
                             <Input label="Nombre" value={person.firstName} onChange={v => setPerson({ ...person, firstName: v })} required />
                             <Input label="Apellido" value={person.lastName} onChange={v => setPerson({ ...person, lastName: v })} required />
                             <Input label="DNI" value={person.dni} onChange={v => setPerson({ ...person, dni: v })} required />

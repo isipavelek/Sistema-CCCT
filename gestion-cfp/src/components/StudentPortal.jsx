@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { LogOut, BookOpen, CheckCircle, Clock, Medal, Award, BarChart2 } from 'lucide-react';
-import { MONTHS_FULL } from '../constants';
+import { LogOut, BookOpen, CheckCircle, Clock, Medal, Award, BarChart2, Camera } from 'lucide-react';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db, appId } from '../services/firebase';
+import { MONTHS_FULL, fmtDate } from '../constants';
 
 const Certificate = ({ student, cohort, course, onClose }) => {
     const today = new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -26,7 +28,7 @@ const Certificate = ({ student, cohort, course, onClose }) => {
                     <p className="text-slate-600 text-lg mb-2">ha completado satisfactoriamente el curso de</p>
                     <h3 className="text-3xl font-bold text-blue-700 mb-2">{course?.name || 'Curso'}</h3>
                     {course?.totalHours && <p className="text-slate-500 text-sm mb-6">con una carga horaria de <strong>{course.totalHours} horas reloj</strong></p>}
-                    {cohort?.endDate && <p className="text-slate-500 text-sm mb-8">Período: {cohort.startDate} — {cohort.endDate}</p>}
+                    {cohort?.endDate && <p className="text-slate-500 text-sm mb-8">Período: {fmtDate(cohort.startDate)} — {fmtDate(cohort.endDate)}</p>}
                     <div className="w-24 h-1 bg-amber-400 mx-auto my-4 rounded-full" />
                     <div className="grid grid-cols-2 gap-16 mt-8 pt-4">
                         <div className="flex flex-col items-center"><div className="h-px w-48 bg-slate-400 mb-2" /><p className="text-sm font-bold text-slate-700">Firma del Docente</p><p className="text-xs text-slate-400">Aclaración</p></div>
@@ -45,6 +47,7 @@ const Certificate = ({ student, cohort, course, onClose }) => {
 
 const StudentPortal = ({ user, userData, courses, cohorts, attendanceLogs, students, handleLogout }) => {
     const [certData, setCertData] = useState(null);
+    const [uploading, setUploading] = useState(false);
 
     // Find this student's record in the students collection by email
     const myStudentRecord = students.find(s => s.email === user.email);
@@ -68,6 +71,30 @@ const StudentPortal = ({ user, userData, courses, cohorts, attendanceLogs, stude
     const activeCohorts = myCohorts.filter(c => !c.endDate || new Date(c.endDate) >= now);
     const finishedCohorts = myCohorts.filter(c => c.endDate && new Date(c.endDate) < now);
 
+    const handlePhotoUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file || !myStudentRecord) return;
+        if (file.size > 1024 * 1024) {
+            alert("La imagen es demasiado grande. Máximo 1MB.");
+            return;
+        }
+        setUploading(true);
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            try {
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'students', myStudentRecord.id), {
+                    photoUrl: ev.target.result
+                });
+            } catch (err) {
+                console.error(err);
+                alert("Error al guardar imagen.");
+            }
+            setUploading(false);
+        };
+        reader.onerror = () => { alert("Error al leer la imagen."); setUploading(false); };
+        reader.readAsDataURL(file);
+    };
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100">
             {certData && (
@@ -81,10 +108,27 @@ const StudentPortal = ({ user, userData, courses, cohorts, attendanceLogs, stude
 
             {/* Header */}
             <header className="bg-white shadow-sm px-8 py-5 flex justify-between items-center sticky top-0 z-10">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-lg">
-                        {userData.firstName?.[0] || user.email?.[0]?.toUpperCase() || 'A'}
-                    </div>
+                <div className="flex items-center gap-4">
+                    <label className="relative w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg overflow-hidden border-2 border-slate-200 cursor-pointer group bg-slate-100 flex-shrink-0 text-slate-500">
+                        {uploading ? (
+                            <div className="text-blue-500 text-xs">...</div>
+                        ) : myStudentRecord?.photoUrl ? (
+                            <>
+                                <img src={myStudentRecord.photoUrl} alt="Perfil" className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white">
+                                    <Camera size={16} />
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div>{userData.firstName?.[0] || user.email?.[0]?.toUpperCase() || 'A'}</div>
+                                <div className="absolute inset-0 bg-black/50 hidden group-hover:flex items-center justify-center text-white">
+                                    <Camera size={16} />
+                                </div>
+                            </>
+                        )}
+                        <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} disabled={uploading || !myStudentRecord} />
+                    </label>
                     <div>
                         <p className="font-bold text-slate-800">{userData.firstName || ''} {userData.lastName || ''}</p>
                         <p className="text-xs text-slate-500">Portal del Alumno · {user.email}</p>
@@ -136,7 +180,7 @@ const StudentPortal = ({ user, userData, courses, cohorts, attendanceLogs, stude
                                                 <div className="flex justify-between items-start mb-3">
                                                     <div>
                                                         <h3 className="font-bold text-slate-800">{course?.name || 'Curso'}</h3>
-                                                        <p className="text-xs text-slate-500">{cohort.startDate} — {cohort.endDate || 'En curso'}</p>
+                                                        <p className="text-xs text-slate-500">{fmtDate(cohort.startDate)} — {fmtDate(cohort.endDate, 'En curso')}</p>
                                                         {daysLabel && <p className="text-xs text-slate-400">{daysLabel} · {cohort.hoursPerMeeting}hs por encuentro</p>}
                                                     </div>
                                                     <span className="text-xs font-bold px-3 py-1 bg-blue-100 text-blue-700 rounded-full">En Curso</span>
@@ -175,7 +219,7 @@ const StudentPortal = ({ user, userData, courses, cohorts, attendanceLogs, stude
                                             <div key={cohort.id} className={`bg-white rounded-xl p-5 shadow-sm border flex justify-between items-center ${approved ? 'border-emerald-200' : 'border-slate-200'}`}>
                                                 <div>
                                                     <h3 className="font-bold text-slate-800">{course?.name || 'Curso'}</h3>
-                                                    <p className="text-xs text-slate-500">{cohort.startDate} — {cohort.endDate}</p>
+                                                    <p className="text-xs text-slate-500">{fmtDate(cohort.startDate)} — {fmtDate(cohort.endDate)}</p>
                                                     {course?.totalHours && <p className="text-xs text-slate-400">{course.totalHours} hs reloj · Asistencia: {stats.attendancePct}%</p>}
                                                 </div>
                                                 <div className="flex items-center gap-3">

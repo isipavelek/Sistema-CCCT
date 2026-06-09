@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { addDoc, deleteDoc, doc, collection } from 'firebase/firestore';
+import { addDoc, deleteDoc, doc, collection, updateDoc } from 'firebase/firestore';
 import { 
-    Calendar, Plus, Trash2, Info, AlertCircle, 
-    CalendarRange, ChevronRight, Moon, Sun, Umbrella, CloudDownload
+    Calendar, Plus, Trash2, Info, AlertCircle, CheckSquare,
+    CalendarRange, ChevronRight, Moon, Sun, Umbrella, CloudDownload,
+    Edit
 } from 'lucide-react';
 import { format, addDays, isAfter, isBefore, parseISO, eachDayOfInterval } from 'date-fns';
 import { db, appId } from '../services/firebase';
@@ -21,8 +22,9 @@ const HolidaysManager = ({ holidays }) => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [loading, setLoading] = useState(false);
+    const [editingId, setEditingId] = useState(null);
 
-    const handleAdd = async (e) => {
+    const handleSave = async (e) => {
         e.preventDefault();
         if (!name || !startDate || (isRange && !endDate)) return;
         
@@ -34,9 +36,17 @@ const HolidaysManager = ({ holidays }) => {
                 startDate,
                 endDate: isRange ? endDate : startDate,
                 isRange,
-                createdAt: new Date().toISOString()
+                updatedAt: new Date().toISOString()
             };
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'holidays'), holidayData);
+
+            if (editingId) {
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'holidays', editingId), holidayData);
+                setEditingId(null);
+            } else {
+                holidayData.createdAt = new Date().toISOString();
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'holidays'), holidayData);
+            }
+
             setName('');
             setStartDate('');
             setEndDate('');
@@ -47,6 +57,24 @@ const HolidaysManager = ({ holidays }) => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const startEdit = (h) => {
+        setEditingId(h.id);
+        setName(h.name);
+        setType(h.type);
+        setIsRange(h.isRange);
+        setStartDate(h.startDate);
+        setEndDate(h.endDate || '');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const cancelEdit = () => {
+        setEditingId(null);
+        setName('');
+        setStartDate('');
+        setEndDate('');
+        setIsRange(false);
     };
 
     const handleDelete = async (id) => {
@@ -130,8 +158,15 @@ const HolidaysManager = ({ holidays }) => {
                         </button>
                     </div>
                 </div>
+                
+                {editingId && (
+                    <div className="bg-blue-600 px-6 py-2 flex justify-between items-center">
+                        <span className="text-white text-xs font-bold uppercase tracking-wider">Modificando registro...</span>
+                        <button onClick={cancelEdit} className="text-white hover:underline text-xs font-bold">Cancelar edición</button>
+                    </div>
+                )}
 
-                <form onSubmit={handleAdd} className="p-6 border-b border-slate-100 bg-slate-50/50">
+                <form onSubmit={handleSave} className="p-6 border-b border-slate-100 bg-slate-50/50">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                         <div className="md:col-span-2">
                             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 ml-1">Descripción / Motivo</label>
@@ -139,7 +174,7 @@ const HolidaysManager = ({ holidays }) => {
                                 type="text" 
                                 value={name} 
                                 onChange={e => setName(e.target.value)}
-                                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition text-sm"
+                                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition text-sm bg-white text-slate-900"
                                 placeholder="Ej: Día del Maestro, Receso Invernal..."
                                 required
                             />
@@ -175,7 +210,7 @@ const HolidaysManager = ({ holidays }) => {
                                 type="date" 
                                 value={startDate} 
                                 onChange={e => setStartDate(e.target.value)}
-                                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition text-sm"
+                                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition text-sm bg-white text-slate-900"
                                 required
                             />
                         </div>
@@ -187,7 +222,7 @@ const HolidaysManager = ({ holidays }) => {
                                     type="date" 
                                     value={endDate} 
                                     onChange={e => setEndDate(e.target.value)}
-                                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition text-sm"
+                                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition text-sm bg-white text-slate-900"
                                     required={isRange}
                                 />
                             </div>
@@ -197,10 +232,10 @@ const HolidaysManager = ({ holidays }) => {
                             <button 
                                 type="submit" 
                                 disabled={loading}
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-2 disabled:opacity-50"
+                                className={`w-full text-white font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-2 disabled:opacity-50 ${editingId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-600 hover:bg-blue-700'}`}
                             >
-                                {loading ? <Plus className="animate-spin" size={18} /> : <Plus size={18} />}
-                                Agregar al Calendario
+                                {loading ? <Plus className="animate-spin" size={18} /> : (editingId ? <CheckSquare size={18} /> : <Plus size={18} />)}
+                                {editingId ? 'Guardar Cambios' : 'Agregar al Calendario'}
                             </button>
                         </div>
                     </div>
@@ -245,13 +280,22 @@ const HolidaysManager = ({ holidays }) => {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-right">
-                                                <button 
-                                                    onClick={() => handleDelete(h.id)}
-                                                    className="text-slate-300 hover:text-red-500 transition p-1.5"
-                                                    title="Eliminar"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                <div className="flex justify-end gap-1">
+                                                    <button 
+                                                        onClick={() => startEdit(h)}
+                                                        className="text-slate-300 hover:text-blue-500 transition p-1.5"
+                                                        title="Editar"
+                                                    >
+                                                        <Edit size={16} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleDelete(h.id)}
+                                                        className="text-slate-300 hover:text-red-500 transition p-1.5"
+                                                        title="Eliminar"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     );

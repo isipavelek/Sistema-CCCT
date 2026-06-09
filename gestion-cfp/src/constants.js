@@ -5,7 +5,7 @@ export const ROLES = {
     STUDENT: 'Alumno'
 };
 
-export const COURSE_TYPES = ['CFP', 'Asociación Civil'];
+export const COURSE_TYPES = ['CFP', 'ACCFP', 'AC'];
 export const MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 export const MONTHS_FULL = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
@@ -18,3 +18,18 @@ export const DAYS_OF_WEEK = [
     { value: 5, label: 'Viernes' },
     { value: 6, label: 'Sábado' },
 ];
+
+/**
+ * Converts an internal 'yyyy-MM-dd' date string to display format 'dd/MM/yyyy'.
+ * Returns the original string if parsing fails, or a fallback if value is empty.
+ */
+export const fmtDate = (dateStr, fallback = '—') => {
+    if (!dateStr) return fallback;
+    try {
+        const [y, m, d] = dateStr.split('-');
+        if (!y || !m || !d) return fallback;
+        return `${d}/${m}/${y}`;
+    } catch {
+        return fallback;
+    }
+};
