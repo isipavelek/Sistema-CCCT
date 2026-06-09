@@ -1,4 +1,4 @@
-const LOCAL_GEMINI_API_KEY = "AIzaSyBEoUIVW-MV19Lz2_HPLQT478GwHhf3HnA";
+const LOCAL_GEMINI_API_KEY = "...";
 
 export const callGemini = async (prompt) => {
     const apiKey = typeof __firebase_config === 'undefined' ? LOCAL_GEMINI_API_KEY : "";
