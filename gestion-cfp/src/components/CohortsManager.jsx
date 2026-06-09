@@ -1,11 +1,17 @@
 import React, { useState, useMemo } from 'react';
 import { updateDoc, addDoc, deleteDoc, doc, collection } from 'firebase/firestore';
-import { FileSpreadsheet, Printer, CheckCircle, PlusCircle, Eye, Edit, Trash2, Search, X, BarChart2, List, Award, Medal } from 'lucide-react';
+import { FileSpreadsheet, Printer, CheckCircle, PlusCircle, Eye, Edit, Trash2, Search, X, BarChart2, List, Award, Medal, Megaphone } from 'lucide-react';
 import { db, appId } from '../services/firebase';
-import { DAYS_OF_WEEK, MONTHS } from '../constants';
+import { DAYS_OF_WEEK, MONTHS, fmtDate } from '../constants';
 import { eachDayOfInterval, format, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
+import DatePicker, { registerLocale } from 'react-datepicker';
+import "react-datepicker/dist/react-datepicker.css";
 import Modal from './Modal';
 import Input from './Input';
+import CourseFlyer from './CourseFlyer';
+
+registerLocale('es', es);
 
 const exportToCSV = (filename, rows) => {
     const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
@@ -35,6 +41,7 @@ const getFlatHolidayDates = (holidays) => {
     return dates;
 };
 
+
 // Calcula la fecha de fin basada en horas del curso, horas por encuentro, y los días de la semana
 const calculateEndDate = (startDateStr, totalHours, hoursPerMeeting, selectedDays, holidayDates = new Set()) => {
     if (!startDateStr || !totalHours || !hoursPerMeeting || !selectedDays || selectedDays.length === 0) return '';
@@ -57,6 +64,7 @@ const calculateEndDate = (startDateStr, totalHours, hoursPerMeeting, selectedDay
     return date.toISOString().split('T')[0];
 };
 
+
 // --- Certificate Component ---
 const Certificate = ({ student, cohort, course, onClose }) => {
     const today = new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -67,6 +75,7 @@ const Certificate = ({ student, cohort, course, onClose }) => {
                 <div className="absolute inset-0 border-[16px] border-double border-amber-200/60 rounded-2xl pointer-events-none" />
                 <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-700 via-blue-500 to-blue-700" />
                 <div className="absolute bottom-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-700 via-blue-500 to-blue-700" />
+
 
                 <div className="p-12 text-center">
                     {/* Header */}
@@ -95,7 +104,7 @@ const Certificate = ({ student, cohort, course, onClose }) => {
                     )}
 
                     {cohort?.endDate && (
-                        <p className="text-slate-500 text-sm mb-8">Período: {cohort.startDate} — {cohort.endDate}</p>
+                        <p className="text-slate-500 text-sm mb-8">Período: {fmtDate(cohort.startDate)} — {fmtDate(cohort.endDate)}</p>
                     )}
 
                     <div className="w-24 h-1 bg-amber-400 mx-auto my-4 rounded-full" />
@@ -141,7 +150,6 @@ const GanttView = ({ cohorts, courses }) => {
             </div>
         );
     }
-
     const allStarts = validCohorts.map(c => new Date(c.startDate + 'T12:00:00'));
     const allEnds = validCohorts.map(c => new Date((c.endDate || c.startDate) + 'T12:00:00'));
     const minDate = new Date(Math.min(...allStarts));
@@ -344,7 +352,7 @@ const CohortDetail = ({ cohort, course, teacher, enrolled, attendanceLogs, onBac
                 <h2 className="text-3xl font-bold text-slate-800 mb-2">{course?.name}</h2>
                 <div className="flex flex-wrap gap-6 text-sm text-slate-600">
                     <p><strong>Docente:</strong> {teacherDisplayName}</p>
-                    <p><strong>Fechas:</strong> {cohort.startDate} — {cohort.endDate || 'Sin definir'}</p>
+                    <p><strong>Fechas:</strong> {fmtDate(cohort.startDate)} — {fmtDate(cohort.endDate, 'Sin definir')}</p>
                     {cohort.days?.length > 0 && <p><strong>Días:</strong> {cohort.days.map(d => ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][d]).join(', ')}</p>}
                     {cohort.hoursPerMeeting && <p><strong>Horas/Encuentro:</strong> {cohort.hoursPerMeeting} hs.</p>}
                     {course?.totalHours && <p><strong>Total Horas:</strong> {course.totalHours} hs. reloj</p>}
@@ -447,6 +455,8 @@ const CohortsManager = ({ cohorts, courses, teachers, students, attendanceLogs, 
     const [formData, setFormData] = useState({ courseId: '', teacherId: '', startDate: '', endDate: '', hoursPerMeeting: '', days: [], studentIds: [] });
     const [searchTermStudent, setSearchTermStudent] = useState('');
     const [searchTermTeacher, setSearchTermTeacher] = useState('');
+    const [searchTermCourse, setSearchTermCourse] = useState('');
+    const [flyerData, setFlyerData] = useState(null); // { cohort, course, teacher }
 
     const activeCourses = courses.filter(c => !c.archived);
     const now = new Date();
@@ -492,8 +502,14 @@ const CohortsManager = ({ cohorts, courses, teachers, students, attendanceLogs, 
         return <CohortDetail cohort={cohort} course={course} teacher={teacher} enrolled={enrolled} attendanceLogs={attendanceLogs} onBack={() => setViewDetailId(null)} />;
     }
 
-    const resetForm = () => { setFormData({ courseId: '', teacherId: '', startDate: '', endDate: '', hoursPerMeeting: '', days: [], studentIds: [] }); setIsEditing(null); setIsModalOpen(false); setSearchTermStudent(''); setSearchTermTeacher(''); };
-    const openEdit = (cohort) => { setIsEditing(cohort.id); setFormData({ days: [], ...cohort }); setIsModalOpen(true); };
+    const resetForm = () => { setFormData({ courseId: '', teacherId: '', startDate: '', endDate: '', hoursPerMeeting: '', days: [], studentIds: [] }); setIsEditing(null); setIsModalOpen(false); setSearchTermStudent(''); setSearchTermTeacher(''); setSearchTermCourse(''); };
+    const openEdit = (cohort) => { 
+        const course = courses.find(c => c.id === cohort.courseId);
+        setIsEditing(cohort.id); 
+        setFormData({ days: [], ...cohort }); 
+        setSearchTermCourse(course?.name || '');
+        setIsModalOpen(true); 
+    };
     const handleDelete = async (cohortId) => { if (confirm("¿Eliminar?")) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'cohorts', cohortId)); };
 
     const handleSave = async (e) => {
@@ -561,8 +577,8 @@ const CohortsManager = ({ cohorts, courses, teachers, students, attendanceLogs, 
                                         <td className="p-4 font-semibold text-slate-800">{courseName}</td>
                                         <td className="p-4">{teacherName}</td>
                                         <td className="p-4 text-slate-600 text-xs">
-                                            <span>{c.startDate}</span><br />
-                                            <span>{c.endDate}</span>
+                                            <span>{fmtDate(c.startDate)}</span><br />
+                                            <span>{fmtDate(c.endDate)}</span>
                                             {c.startDate && c.endDate && (() => {
                                                 const start = new Date(c.startDate + 'T12:00:00');
                                                 const end = new Date(c.endDate + 'T12:00:00');
@@ -578,6 +594,17 @@ const CohortsManager = ({ cohorts, courses, teachers, students, attendanceLogs, 
                                         <td className="p-4"><span className={`px-2 py-1 rounded text-xs font-bold ${isActive ? 'text-green-600 bg-green-100' : 'text-slate-500 bg-slate-100'}`}>{isActive ? 'En Curso' : 'Finalizado'}</span></td>
                                         <td className="p-4 text-right no-print">
                                             <div className="flex justify-end gap-2">
+                                                <button
+                                                    title="Generar Flyer"
+                                                    onClick={() => {
+                                                        const course = courses.find(x => x.id === c.courseId);
+                                                        const teacher = teachers.find(x => x.id === c.teacherId);
+                                                        setFlyerData({ cohort: c, course, teacher });
+                                                    }}
+                                                    className="text-orange-500 hover:bg-orange-50 p-1.5 rounded flex items-center gap-1 text-xs font-bold border border-orange-200"
+                                                >
+                                                    <Megaphone size={15} /> Flyer
+                                                </button>
                                                 <button onClick={() => setViewDetailId(c.id)} title="Ver Lista" className="text-slate-600 hover:bg-slate-100 p-1.5 rounded bg-slate-50 border border-slate-200"><Eye size={16} /></button>
                                                 <button onClick={() => openEdit(c)} className="text-blue-600 hover:bg-blue-50 p-1.5 rounded"><Edit size={16} /></button>
                                                 <button onClick={() => handleDelete(c.id)} className="text-red-600 hover:bg-red-50 p-1.5 rounded"><Trash2 size={16} /></button>
@@ -595,18 +622,64 @@ const CohortsManager = ({ cohorts, courses, teachers, students, attendanceLogs, 
                 <Modal title={isEditing ? "Editar Cohorte" : "Lanzar Cohorte"} onClose={resetForm}>
                     <form onSubmit={handleSave} className="space-y-4">
                         {/* Course */}
-                        <div>
+                        <div className="relative">
                             <label className="block text-sm font-medium text-slate-700 mb-1">Curso</label>
-                            <select className="w-full bg-white text-slate-900 border border-slate-300 rounded-lg p-2" value={formData.courseId} onChange={e => handleFormChange({ courseId: e.target.value })}>
-                                <option value="">Seleccionar...</option>
-                                {activeCourses.map(c => <option key={c.id} value={c.id}>{c.name} {c.totalHours ? `(${c.totalHours}hs)` : ''}</option>)}
-                            </select>
+                            {formData.courseId ? (
+                                <div className="flex justify-between items-center p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <span className="text-sm font-medium text-blue-800">
+                                        {activeCourses.find(c => c.id === formData.courseId)?.name}
+                                    </span>
+                                    <button type="button" onClick={() => { handleFormChange({ courseId: '' }); setSearchTermCourse(''); }} className="text-blue-500 hover:text-blue-700"><X size={16} /></button>
+                                </div>
+                            ) : (
+                                <div className="relative">
+                                    <div className="flex items-center border border-slate-300 rounded-lg bg-white p-2 focus-within:ring-2 focus-within:ring-orange-500">
+                                        <Search size={16} className="text-slate-400 mr-2" />
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar curso..."
+                                            className="w-full outline-none text-sm bg-transparent text-slate-900"
+                                            value={searchTermCourse}
+                                            onChange={e => setSearchTermCourse(e.target.value)}
+                                            autoFocus
+                                        />
+                                    </div>
+                                    {(
+                                        <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 shadow-lg rounded-lg max-h-52 overflow-y-auto">
+                                            {activeCourses
+                                                .filter(c => c.name.toLowerCase().includes(searchTermCourse.toLowerCase()))
+                                                .map(c => (
+                                                    <div
+                                                        key={c.id}
+                                                        onClick={() => { handleFormChange({ courseId: c.id }); setSearchTermCourse(c.name); }}
+                                                        className="p-2.5 hover:bg-orange-50 cursor-pointer text-sm border-b last:border-0 flex justify-between items-center"
+                                                    >
+                                                        <span className="font-medium text-slate-900">{c.name}</span>
+                                                        {c.totalHours && <span className="text-xs text-slate-400 ml-2">{c.totalHours}hs</span>}
+                                                    </div>
+                                                ))
+                                            }
+                                            {activeCourses.filter(c => c.name.toLowerCase().includes(searchTermCourse.toLowerCase())).length === 0 && (
+                                                <div className="p-3 text-sm text-slate-400 text-center">Sin resultados</div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Schedule */}
                         <div className="grid grid-cols-2 gap-4">
                             <Input type="number" label="Horas por Encuentro" value={formData.hoursPerMeeting} onChange={v => handleFormChange({ hoursPerMeeting: v })} />
-                            <Input type="date" label="Fecha de Inicio" value={formData.startDate} onChange={v => handleFormChange({ startDate: v })} />
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de Inicio</label>
+                                <DatePicker
+                                    selected={formData.startDate ? parseISO(formData.startDate) : null}
+                                    onChange={date => handleFormChange({ startDate: date ? format(date, 'yyyy-MM-dd') : '' })}
+                                    dateFormat="dd/MM/yyyy" isClearable placeholderText="dd/mm/aaaa"
+                                    className="w-full bg-white text-slate-900 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                            </div>
                         </div>
 
                         {/* Days of week */}
@@ -624,7 +697,13 @@ const CohortsManager = ({ cohorts, courses, teachers, students, attendanceLogs, 
 
                         {/* End Date (auto-calculated, but editable) */}
                         <div>
-                            <Input type="date" label="Fecha de Fin (calculada automáticamente)" value={formData.endDate} onChange={v => setFormData({ ...formData, endDate: v })} />
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de Fin (calculada automáticamente)</label>
+                            <DatePicker
+                                selected={formData.endDate ? parseISO(formData.endDate) : null}
+                                onChange={date => setFormData({ ...formData, endDate: date ? format(date, 'yyyy-MM-dd') : '' })}
+                                dateFormat="dd/MM/yyyy" isClearable placeholderText="dd/mm/aaaa"
+                                className="w-full bg-white text-slate-900 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
                             {formData.endDate && formData.startDate && (
                                 <p className="text-xs text-slate-400 mt-1">
                                     Duración estimada: {Math.round((new Date(formData.endDate) - new Date(formData.startDate)) / (1000 * 60 * 60 * 24 * 7))} semanas
@@ -696,6 +775,15 @@ const CohortsManager = ({ cohorts, courses, teachers, students, attendanceLogs, 
                         <button type="submit" className="w-full bg-orange-500 text-white py-2 rounded-lg font-bold hover:bg-orange-600">Guardar</button>
                     </form>
                 </Modal>
+            )}
+
+            {flyerData && (
+                <CourseFlyer
+                    course={flyerData.course}
+                    cohort={flyerData.cohort}
+                    teacher={flyerData.teacher}
+                    onClose={() => setFlyerData(null)}
+                />
             )}
         </div>
     );
